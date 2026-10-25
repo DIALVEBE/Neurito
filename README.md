@@ -1,12 +1,12 @@
 # Neurito
 
-Nuestra primer mascota creada con Rede neuronal para que pueda tomar decisiones entre:
+Nuestra primer mascota creada con Redes neuronales para que pueda tomar decisiones entre:
 
-Comer
+1. Comer
 
-Dormir
+2. Dormir
 
-Jugar
+3. Jugar
 
 
 ## Para usar el repo
