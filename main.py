@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import numpy as np
 import pygame
+
 
 # ===================================
 # 1. Preparar datos de entrenamiento
@@ -8,20 +11,12 @@ import pygame
 np.random.seed(42)
 
 # Generamos 3000 situaciones posibles.
-# Cada fila representa:
-# [hambre, energia, aburrimiento]
+# Cada fila contiene hambre, energia y aburrimiento.
 X = np.random.rand(3000, 3)
 
-# Creamos ejemplos de decisiones correctas.
-# El índice de la necesidad dominante determina la acción:
+# Creamos las decisiones correctas.
 # 0 = comer, 1 = dormir, 2 = jugar.
-necesidades = np.column_stack(
-    (
-        X[:, 0],  # Hambre
-        1 - X[:, 1],  # Cansancio (energía baja)
-        X[:, 2],  # Aburrimiento
-    )
-)
+necesidades = np.column_stack((X[:, 0], 1 - X[:, 1], X[:, 2]))
 
 y = np.argmax(necesidades, axis=1)
 
@@ -30,13 +25,12 @@ y = np.argmax(necesidades, axis=1)
 # 2. Crear la red neuronal
 # ===================================
 
-# Tres entradas, seis neuronas ocultas,
-# tres neuronas de salida.
+# Arquitectura: 3 entradas, 6 ocultas, 3 salidas.
 entradas = 3
 ocultas = 6
 salidas = 3
 
-# Los pesos comienzan con valores aleatorios.
+# Pesos y sesgos iniciales.
 W1 = np.random.randn(entradas, ocultas) * 0.5
 b1 = np.zeros((1, ocultas))
 
@@ -50,12 +44,12 @@ b2 = np.zeros((1, salidas))
 
 
 def relu(x):
-    # Los valores negativos se convierten en cero.
+    # Convierte los valores negativos en cero.
     return np.maximum(0, x)
 
 
 def softmax(x):
-    # Convierte los resultados en probabilidades.
+    # Transforma las salidas en probabilidades.
     e = np.exp(x - np.max(x, axis=1, keepdims=True))
     return e / np.sum(e, axis=1, keepdims=True)
 
@@ -65,12 +59,12 @@ def softmax(x):
 # ===================================
 
 
-def predecir(X):
-    # Primera capa: entradas a neuronas ocultas.
-    z1 = X @ W1 + b1
+def predecir(datos):
+    # Primera capa.
+    z1 = datos @ W1 + b1
     a1 = relu(z1)
 
-    # Segunda capa: neuronas ocultas a salidas.
+    # Segunda capa.
     z2 = a1 @ W2 + b2
     a2 = softmax(z2)
 
@@ -85,21 +79,19 @@ tasa_aprendizaje = 0.1
 epocas = 1200
 
 for epoca in range(epocas):
-    # PROPAGACIÓN HACIA ADELANTE
+    # Propagación hacia adelante.
     z1 = X @ W1 + b1
     a1 = relu(z1)
 
     z2 = a1 @ W2 + b2
     a2 = softmax(z2)
 
-    # CÁLCULO DEL ERROR
-    # Cross entropy para clasificación.
+    # Calcular la pérdida.
     n = len(X)
 
     perdida = -np.mean(np.log(a2[np.arange(n), y] + 1e-10))
 
-    # RETROPROPAGACIÓN
-    # Gradiente de Softmax + Cross Entropy.
+    # Retropropagación: capa de salida.
     dz2 = a2.copy()
     dz2[np.arange(n), y] -= 1
     dz2 /= n
@@ -107,14 +99,14 @@ for epoca in range(epocas):
     dW2 = a1.T @ dz2
     db2 = np.sum(dz2, axis=0, keepdims=True)
 
-    # Gradiente hacia la capa oculta.
+    # Retropropagación: capa oculta.
     da1 = dz2 @ W2.T
     dz1 = da1 * (z1 > 0)
 
     dW1 = X.T @ dz1
     db1 = np.sum(dz1, axis=0, keepdims=True)
 
-    # ACTUALIZAR PESOS Y SESGOS
+    # Actualizar pesos y sesgos.
     W1 -= tasa_aprendizaje * dW1
     b1 -= tasa_aprendizaje * db1
 
@@ -124,7 +116,11 @@ for epoca in range(epocas):
     if epoca % 200 == 0:
         print(f"Época {epoca} | Error: {perdida:.4f}")
 
-# Evaluamos con 1000 situaciones nuevas.
+
+# ===================================
+# 6. Evaluar la red neuronal
+# ===================================
+
 prueba = np.random.rand(1000, 3)
 
 necesidades_prueba = np.column_stack((prueba[:, 0], 1 - prueba[:, 1], prueba[:, 2]))
@@ -138,154 +134,286 @@ print(f"Precisión en situaciones nuevas: {precision:.2%}")
 
 
 # ===================================
-# 6. Crear la mascota virtual
+# 7. Configurar Pygame
 # ===================================
 
 pygame.init()
 
-ANCHO = 760
-ALTO = 570
+ANCHO = 900
+ALTO = 600
 
 pantalla = pygame.display.set_mode((ANCHO, ALTO))
-pygame.display.set_caption("Neurito - Mascota con red neuronal")
+pygame.display.set_caption("Neurito - Mascota con cerebro artificial")
 
 reloj = pygame.time.Clock()
 
-fuente = pygame.font.SysFont(None, 30)
-fuente_pequena = pygame.font.SysFont(None, 23)
+fuente = pygame.font.SysFont(None, 34)
+fuente_pequena = pygame.font.SysFont(None, 24)
+fuente_titulo = pygame.font.SysFont(None, 40)
 
-# Estado inicial de Neurito.
-hambre = 0.7
-energia = 0.4
-aburrimiento = 0.6
+# Carpeta que contiene nuestros sprites.
+RUTA_ASSETS = Path(__file__).resolve().parent / "assets"
 
-acciones = ["COMER", "DORMIR", "JUGAR"]
+# Tamaño de las imágenes en pantalla.
+TAMANO_MASCOTA = (350, 350)
 
 
 # ===================================
-# 7. Dibujar indicadores
+# 8. Cargar imágenes de la mascota
+# ===================================
+
+
+def cargar_imagen(nombre):
+    # Buscar el archivo en la carpeta assets.
+    ruta = RUTA_ASSETS / nombre
+
+    # Cargar PNG conservando su transparencia.
+    imagen = pygame.image.load(str(ruta)).convert_alpha()
+
+    # Ajustar el tamaño de la imagen.
+    imagen = pygame.transform.smoothscale(imagen, TAMANO_MASCOTA)
+
+    return imagen
+
+
+# Cada estado contiene los frames de su animación.
+animaciones = {
+    "neutral": [
+        cargar_imagen("neutral_1.png"),
+        cargar_imagen("neutral_2.png"),
+        cargar_imagen("neutral_3.png"),
+    ],
+    "comer": [cargar_imagen("comer_1.png"), cargar_imagen("comer_2.png")],
+    "dormir": [cargar_imagen("dormir_1.png"), cargar_imagen("dormir_2.png")],
+    "jugar": [cargar_imagen("jugar_1.png"), cargar_imagen("jugar_2.png")],
+}
+
+
+# ===================================
+# 9. Configurar las animaciones
+# ===================================
+
+# Tiempo que permanece cada imagen (milisegundos).
+VELOCIDAD_ANIMACION = 500
+
+# Estado visual inicial.
+estado_actual = "neutral"
+
+# Índice de la imagen que estamos mostrando.
+frame_actual = 0
+
+# Momento del último cambio de imagen.
+ultimo_cambio = pygame.time.get_ticks()
+
+
+def actualizar_animacion(nuevo_estado):
+    global estado_actual
+    global frame_actual
+    global ultimo_cambio
+
+    # Tiempo actual de Pygame en milisegundos.
+    ahora = pygame.time.get_ticks()
+
+    # Si cambia el estado, reiniciamos la animación.
+    if nuevo_estado != estado_actual:
+        estado_actual = nuevo_estado
+        frame_actual = 0
+        ultimo_cambio = ahora
+
+    # Si transcurrieron 500 ms, avanzamos de imagen.
+    elif ahora - ultimo_cambio >= VELOCIDAD_ANIMACION:
+        # Pasar a la siguiente imagen.
+        # El módulo (%) permite regresar al principio.
+        frame_actual = (frame_actual + 1) % len(animaciones[estado_actual])
+
+        # Guardar el momento del cambio.
+        ultimo_cambio = ahora
+
+    # Devolver la imagen correspondiente.
+    return animaciones[estado_actual][frame_actual]
+
+
+# ===================================
+# 10. Estado inicial de la mascota
+# ===================================
+
+hambre = 0.2
+energia = 0.9
+aburrimiento = 0.2
+
+acciones = ["comer", "dormir", "jugar"]
+
+
+# ===================================
+# 11. Dibujar indicadores
 # ===================================
 
 
 def dibujar_barra(nombre, valor, y, color):
-    # Nombre y porcentaje de la necesidad.
+
     texto = fuente_pequena.render(f"{nombre}: {valor * 100:.0f}%", True, (35, 40, 55))
-    pantalla.blit(texto, (55, y - 28))
+    pantalla.blit(texto, (55, y - 30))
 
     # Fondo de la barra.
-    pygame.draw.rect(pantalla, (215, 220, 230), (55, y, 260, 22), border_radius=8)
+    pygame.draw.rect(pantalla, (215, 220, 230), (55, y, 300, 24), border_radius=8)
 
-    # Relleno de acuerdo con el valor.
-    pygame.draw.rect(pantalla, color, (55, y, int(260 * valor), 22), border_radius=8)
-
-
-# ===================================
-# 8. Dibujar a Neurito
-# ===================================
-
-
-def dibujar_mascota(accion):
-
-    # Cuerpo de la mascota.
-    pygame.draw.circle(pantalla, (88, 160, 235), (545, 215), 95)
-
-    # Ojos.
-    pygame.draw.circle(pantalla, (255, 255, 255), (515, 195), 18)
-    pygame.draw.circle(pantalla, (255, 255, 255), (575, 195), 18)
-
-    pygame.draw.circle(pantalla, (25, 40, 65), (519, 198), 8)
-    pygame.draw.circle(pantalla, (25, 40, 65), (579, 198), 8)
-
-    # Expresión distinta según la decisión.
-    if accion == 0:
-        # Boca abierta cuando quiere comer.
-        pygame.draw.circle(pantalla, (40, 50, 70), (545, 250), 15)
-
-    elif accion == 1:
-        # Línea de sueño.
-        pygame.draw.arc(pantalla, (40, 50, 70), (520, 235, 50, 25), 0, 3.14, 4)
-
-    else:
-        # Sonrisa cuando quiere jugar.
-        pygame.draw.arc(pantalla, (40, 50, 70), (515, 230, 60, 38), 3.14, 6.28, 4)
+    # Barra de progreso.
+    pygame.draw.rect(pantalla, color, (55, y, int(300 * valor), 24), border_radius=8)
 
 
 # ===================================
-# 9. Juego principal
+# 12. Determinar el estado visual
+# ===================================
+
+
+def obtener_estado(hambre, energia, aburrimiento, decision):
+
+    # Si sus necesidades están satisfechas,
+    # mostramos el estado neutro.
+    #
+    # Esta condición no pertenece a la red neuronal.
+    # Es una regla adicional para la interfaz.
+    if hambre < 0.4 and energia > 0.6 and aburrimiento < 0.4:
+        return "neutral"
+
+    # En los demás casos utilizamos
+    # la decisión de la red neuronal.
+    return acciones[decision]
+
+
+# ===================================
+# 13. Juego principal
 # ===================================
 
 ejecutando = True
 
 while ejecutando:
+    # -----------------------------------
+    # Procesar eventos del teclado
+    # -----------------------------------
+
     for evento in pygame.event.get():
         if evento.type == pygame.QUIT:
             ejecutando = False
 
         if evento.type == pygame.KEYDOWN:
-            # Cambiar las necesidades manualmente.
+            if evento.key == pygame.K_ESCAPE:
+                ejecutando = False
+
+            # Modificar el hambre.
             if evento.key == pygame.K_h:
                 hambre = min(1, hambre + 0.1)
 
             if evento.key == pygame.K_j:
                 hambre = max(0, hambre - 0.1)
 
+            # Modificar la energía.
             if evento.key == pygame.K_e:
                 energia = min(1, energia + 0.1)
 
             if evento.key == pygame.K_d:
                 energia = max(0, energia - 0.1)
 
+            # Modificar el aburrimiento.
             if evento.key == pygame.K_a:
                 aburrimiento = min(1, aburrimiento + 0.1)
 
             if evento.key == pygame.K_s:
                 aburrimiento = max(0, aburrimiento - 0.1)
 
-            # Nueva situación aleatoria.
+            # Generar un estado aleatorio.
             if evento.key == pygame.K_r:
                 hambre, energia, aburrimiento = np.random.rand(3)
 
-    # La red neuronal analiza el estado actual.
+            # Recuperar el estado tranquilo.
+            if evento.key == pygame.K_n:
+                hambre = 0.2
+                energia = 0.9
+                aburrimiento = 0.2
+
+    # -----------------------------------
+    # Consultar la red neuronal
+    # -----------------------------------
+
     estado = np.array([[hambre, energia, aburrimiento]])
 
     probabilidades = predecir(estado)[0]
 
-    # Selecciona la acción con mayor probabilidad.
+    # Elegir la salida con mayor probabilidad.
     decision = int(np.argmax(probabilidades))
 
-    # Dibujamos la interfaz.
-    pantalla.fill((245, 247, 252))
+    # Determinar qué estado debemos mostrar.
+    nuevo_estado = obtener_estado(hambre, energia, aburrimiento, decision)
 
-    titulo = fuente.render("NEURITO - MI PRIMER CEREBRO ARTIFICIAL", True, (35, 45, 65))
+    # Actualizar el frame de la animación.
+    imagen_mascota = actualizar_animacion(nuevo_estado)
+
+    # -----------------------------------
+    # Dibujar interfaz
+    # -----------------------------------
+
+    pantalla.fill((250, 245, 252))
+
+    titulo = fuente_titulo.render("NEURITO - MI CEREBRO ARTIFICIAL", True, (65, 50, 85))
     pantalla.blit(titulo, (55, 30))
 
-    dibujar_barra("Hambre", hambre, 120, (240, 150, 75))
-    dibujar_barra("Energia", energia, 200, (65, 180, 115))
-    dibujar_barra("Aburrimiento", aburrimiento, 280, (110, 135, 240))
+    # Indicadores de necesidades.
+    dibujar_barra("Hambre", hambre, 130, (240, 150, 75))
 
-    dibujar_mascota(decision)
+    dibujar_barra("Energia", energia, 225, (65, 180, 115))
 
-    texto_accion = fuente.render(f"Quiero: {acciones[decision]}", True, (35, 45, 65))
-    pantalla.blit(texto_accion, (430, 340))
+    dibujar_barra("Aburrimiento", aburrimiento, 320, (110, 135, 240))
 
-    # Mostrar las probabilidades de cada salida.
+    # -----------------------------------
+    # Mostrar mascota animada
+    # -----------------------------------
+
+    posicion_mascota = imagen_mascota.get_rect(center=(660, 245))
+
+    pantalla.blit(imagen_mascota, posicion_mascota)
+
+    # Mostrar el estado actual.
+    texto_estado = fuente.render(f"Estado: {nuevo_estado.upper()}", True, (90, 65, 110))
+
+    rect_estado = texto_estado.get_rect(center=(660, 440))
+
+    pantalla.blit(texto_estado, rect_estado)
+
+    # -----------------------------------
+    # Mostrar predicciones de la red
+    # -----------------------------------
+
     for i, nombre in enumerate(acciones):
         texto = fuente_pequena.render(
-            f"{nombre}: {probabilidades[i] * 100:.1f}%", True, (40, 45, 60)
+            f"{nombre.upper()}: {probabilidades[i] * 100:.1f}%", True, (65, 60, 80)
         )
-        pantalla.blit(texto, (430, 390 + i * 29))
+
+        pantalla.blit(texto, (55, 400 + i * 30))
+
+    # -----------------------------------
+    # Mostrar controles
+    # -----------------------------------
 
     ayuda1 = fuente_pequena.render(
-        "H/J: hambre +/-    E/D: energia +/-", True, (65, 70, 90)
+        "H/J: Hambre +/-     E/D: Energia +/-", True, (90, 90, 110)
     )
+
     ayuda2 = fuente_pequena.render(
-        "A/S: aburrimiento +/-    R: estado aleatorio", True, (65, 70, 90)
+        "A/S: Aburrimiento +/-     R: Aleatorio", True, (90, 90, 110)
     )
 
-    pantalla.blit(ayuda1, (55, 490))
-    pantalla.blit(ayuda2, (55, 520))
+    ayuda3 = fuente_pequena.render(
+        "N: Estado neutro     ESC: Salir", True, (90, 90, 110)
+    )
 
+    pantalla.blit(ayuda1, (55, 500))
+    pantalla.blit(ayuda2, (55, 530))
+    pantalla.blit(ayuda3, (55, 560))
+
+    # Actualizar la pantalla.
     pygame.display.flip()
+
+    # Mantener 30 fotogramas por segundo.
     reloj.tick(30)
 
 pygame.quit()
